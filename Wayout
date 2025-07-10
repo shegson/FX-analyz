@@ -1,0 +1,671 @@
+
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, CandlestickChart, ReferenceLine } from 'recharts';
+import { TrendingUp, TrendingDown, AlertCircle, Target, DollarSign, Clock, Activity, BarChart3, Bell, Settings, Zap, Brain, Shield, Eye } from 'lucide-react';
+
+const ForexAnalyzer = () => {
+  const [selectedPair, setSelectedPair] = useState('EUR/USD');
+  const [timeframe, setTimeframe] = useState('1H');
+  const [analysis, setAnalysis] = useState(null);
+  const [priceData, setPriceData] = useState([]);
+  const [signals, setSignals] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [marketSentiment, setMarketSentiment] = useState(null);
+  const [alerts, setAlerts] = useState([]);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [riskLevel, setRiskLevel] = useState('medium');
+  const [accountBalance, setAccountBalance] = useState(10000);
+  const [leverage, setLeverage] = useState(1);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [aiPrediction, setAiPrediction] = useState(null);
+
+  // Enhanced price data with candlestick format
+  const generateEnhancedPriceData = (pair, tf) => {
+    const basePrice = {
+      'EUR/USD': 1.0850, 'GBP/USD': 1.2650, 'AUD/USD': 0.6750,
+      'USD/JPY': 148.50, 'USD/CAD': 1.3450, 'USD/CHF': 0.8950,
+      'EUR/GBP': 0.8580, 'EUR/JPY': 161.20, 'GBP/JPY': 187.90
+    }[pair] || 1.0850;
+    
+    const data = [];
+    let price = basePrice;
+    let trend = Math.random() > 0.5 ? 1 : -1;
+    let volatility = 0.001;
+    
+    for (let i = 0; i < 200; i++) {
+      // Market hours volatility simulation
+      const hour = new Date(Date.now() - (200 - i) * 3600000).getHours();
+      const isMarketHours = (hour >= 8 && hour <= 17) || (hour >= 20 && hour <= 23);
+      volatility = isMarketHours ? 0.002 : 0.0005;
+      
+      // Trend persistence with occasional reversals
+      if (Math.random() < 0.05) trend *= -1;
+      
+      const trendForce = trend * (Math.random() * 0.3 + 0.1);
+      const noise = (Math.random() - 0.5) * 2;
+      const change = (trendForce + noise) * volatility;
+      
+      price += change;
+      
+      const high = price + Math.random() * volatility * 0.5;
+      const low = price - Math.random() * volatility * 0.5;
+      const open = i === 0 ? price : data[i-1].close;
+      const close = price;
+      const volume = Math.floor(Math.random() * 2000) + 1000 + (isMarketHours ? 1500 : 0);
+      
+      data.push({
+        time: new Date(Date.now() - (200 - i) * 3600000).toLocaleTimeString(),
+        timestamp: Date.now() - (200 - i) * 3600000,
+        open: Number(open.toFixed(5)),
+        high: Number(high.toFixed(5)),
+        low: Number(low.toFixed(5)),
+        close: Number(close.toFixed(5)),
+        price: Number(price.toFixed(5)),
+        volume: volume,
+        isMarketHours
+      });
+    }
+    return data;
+  };
+
+  // Advanced technical indicators
+  const calculateAdvancedIndicators = (data) => {
+    const prices = data.map(d => d.close);
+    const highs = data.map(d => d.high);
+    const lows = data.map(d => d.low);
+    const volumes = data.map(d => d.volume);
+    
+    return {
+      sma20: calculateSMA(prices, 20),
+      sma50: calculateSMA(prices, 50),
+      ema12: calculateEMA(prices, 12),
+      ema26: calculateEMA(prices, 26),
+      rsi: calculateRSI(prices, 14),
+      macd: calculateMACD(prices),
+      bollinger: calculateBollingerBands(prices, 20),
+      stochastic: calculateStochastic(highs, lows, prices, 14),
+      atr: calculateATR(highs, lows, prices, 14),
+      adx: calculateADX(highs, lows, prices, 14),
+      obv: calculateOBV(prices, volumes),
+      vwap: calculateVWAP(highs, lows, prices, volumes),
+      ichimoku: calculateIchimoku(highs, lows, prices),
+      williamsR: calculateWilliamsR(highs, lows, prices, 14),
+      cci: calculateCCI(highs, lows, prices, 20)
+    };
+  };
+
+  // Enhanced calculation functions
+  const calculateSMA = (data, period) => {
+    if (data.length < period) return data[data.length - 1] || 0;
+    const sum = data.slice(-period).reduce((a, b) => a + b, 0);
+    return sum / period;
+  };
+
+  const calculateEMA = (data, period) => {
+    if (data.length === 0) return 0;
+    const multiplier = 2 / (period + 1);
+    let ema = data[0];
+    for (let i = 1; i < data.length; i++) {
+      ema = (data[i] * multiplier) + (ema * (1 - multiplier));
+    }
+    return ema;
+  };
+
+  const calculateRSI = (data, period = 14) => {
+    if (data.length < period + 1) return 50;
+    
+    let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++) {
+      const change = data[data.length - i] - data[data.length - i - 1];
+      if (change > 0) gains += change;
+      else losses -= change;
+    }
+    
+    const avgGain = gains / period;
+    const avgLoss = losses / period;
+    const rs = avgGain / avgLoss;
+    return 100 - (100 / (1 + rs));
+  };
+
+  const calculateMACD = (data) => {
+    const ema12 = calculateEMA(data, 12);
+    const ema26 = calculateEMA(data, 26);
+    return ema12 - ema26;
+  };
+
+  const calculateBollingerBands = (data, period) => {
+    const sma = calculateSMA(data, period);
+    const slice = data.slice(-period);
+    const variance = slice.reduce((sum, price) => sum + Math.pow(price - sma, 2), 0) / period;
+    const stdDev = Math.sqrt(variance);
+    
+    return {
+      upper: sma + (stdDev * 2),
+      middle: sma,
+      lower: sma - (stdDev * 2)
+    };
+  };
+
+  const calculateStochastic = (highs, lows, closes, period) => {
+    const recentHighs = highs.slice(-period);
+    const recentLows = lows.slice(-period);
+    const currentClose = closes[closes.length - 1];
+    
+    const highestHigh = Math.max(...recentHighs);
+    const lowestLow = Math.min(...recentLows);
+    
+    const k = ((currentClose - lowestLow) / (highestHigh - lowestLow)) * 100;
+    return { k, d: k }; // Simplified - normally D is SMA of K
+  };
+
+  const calculateATR = (highs, lows, closes, period) => {
+    const trueRanges = [];
+    for (let i = 1; i < highs.length; i++) {
+      const tr = Math.max(
+        highs[i] - lows[i],
+        Math.abs(highs[i] - closes[i - 1]),
+        Math.abs(lows[i] - closes[i - 1])
+      );
+      trueRanges.push(tr);
+    }
+    return calculateSMA(trueRanges, period);
+  };
+
+  const calculateADX = (highs, lows, closes, period) => {
+    // Simplified ADX calculation
+    let upMoves = 0, downMoves = 0;
+    for (let i = 1; i < highs.length; i++) {
+      const upMove = highs[i] - highs[i - 1];
+      const downMove = lows[i - 1] - lows[i];
+      if (upMove > downMove && upMove > 0) upMoves++;
+      if (downMove > upMove && downMove > 0) downMoves++;
+    }
+    return Math.abs(upMoves - downMoves) / period * 100;
+  };
+
+  const calculateOBV = (prices, volumes) => {
+    let obv = 0;
+    for (let i = 1; i < prices.length; i++) {
+      if (prices[i] > prices[i - 1]) obv += volumes[i];
+      else if (prices[i] < prices[i - 1]) obv -= volumes[i];
+    }
+    return obv;
+  };
+
+  const calculateVWAP = (highs, lows, closes, volumes) => {
+    let cumVolume = 0, cumVolumePrice = 0;
+    for (let i = 0; i < closes.length; i++) {
+      const typicalPrice = (highs[i] + lows[i] + closes[i]) / 3;
+      cumVolumePrice += typicalPrice * volumes[i];
+      cumVolume += volumes[i];
+    }
+    return cumVolumePrice / cumVolume;
+  };
+
+  const calculateIchimoku = (highs, lows, closes) => {
+    const tenkanSen = (Math.max(...highs.slice(-9)) + Math.min(...lows.slice(-9))) / 2;
+    const kijunSen = (Math.max(...highs.slice(-26)) + Math.min(...lows.slice(-26))) / 2;
+    const senkouSpanA = (tenkanSen + kijunSen) / 2;
+    const senkouSpanB = (Math.max(...highs.slice(-52)) + Math.min(...lows.slice(-52))) / 2;
+    
+    return { tenkanSen, kijunSen, senkouSpanA, senkouSpanB };
+  };
+
+  const calculateWilliamsR = (highs, lows, closes, period) => {
+    const recentHighs = highs.slice(-period);
+    const recentLows = lows.slice(-period);
+    const currentClose = closes[closes.length - 1];
+    
+    const highestHigh = Math.max(...recentHighs);
+    const lowestLow = Math.min(...recentLows);
+    
+    return -100 * (highestHigh - currentClose) / (highestHigh - lowestLow);
+  };
+
+  const calculateCCI = (highs, lows, closes, period) => {
+    const typicalPrices = highs.map((high, i) => (high + lows[i] + closes[i]) / 3);
+    const sma = calculateSMA(typicalPrices, period);
+    const meanDeviation = typicalPrices.slice(-period).reduce((sum, tp) => sum + Math.abs(tp - sma), 0) / period;
+    
+    return (typicalPrices[typicalPrices.length - 1] - sma) / (0.015 * meanDeviation);
+  };
+
+  // Advanced pattern recognition
+  const detectAdvancedPatterns = (data) => {
+    const patterns = [];
+    const recent = data.slice(-50);
+    const closes = recent.map(d => d.close);
+    const highs = recent.map(d => d.high);
+    const lows = recent.map(d => d.low);
+    
+    // Head and Shoulders
+    const peaks = findPeaks(highs);
+    if (peaks.length >= 3) {
+      const [left, head, right] = peaks.slice(-3);
+      if (highs[head] > highs[left] && highs[head] > highs[right] && 
+          Math.abs(highs[left] - highs[right]) / highs[head] < 0.02) {
+        patterns.push({ 
+          type: 'Head and Shoulders', 
+          strength: 'Very Strong', 
+          direction: 'Bearish',
+          reliability: 85,
+          target: highs[head] * 0.98
+        });
+      }
+    }
+    
+    // Cup and Handle
+    const cupPattern = detectCupAndHandle(closes);
+    if (cupPattern) {
+      patterns.push({ 
+        type: 'Cup and Handle', 
+        strength: 'Strong', 
+        direction: 'Bullish',
+        reliability: 78,
+        target: cupPattern.target
+      });
+    }
+    
+    // Flag patterns
+    const flagPattern = detectFlag(closes, highs, lows);
+    if (flagPattern) {
+      patterns.push({ 
+        type: `${flagPattern.direction} Flag`, 
+        strength: 'Medium', 
+        direction: flagPattern.direction,
+        reliability: 70,
+        target: flagPattern.target
+      });
+    }
+    
+    // Wedge patterns
+    const wedgePattern = detectWedge(highs, lows);
+    if (wedgePattern) {
+      patterns.push({ 
+        type: `${wedgePattern.type} Wedge`, 
+        strength: 'Strong', 
+        direction: wedgePattern.direction,
+        reliability: 75,
+        target: wedgePattern.target
+      });
+    }
+    
+    return patterns;
+  };
+
+  const findPeaks = (data) => {
+    const peaks = [];
+    for (let i = 1; i < data.length - 1; i++) {
+      if (data[i] > data[i - 1] && data[i] > data[i + 1]) {
+        peaks.push(i);
+      }
+    }
+    return peaks;
+  };
+
+  const detectCupAndHandle = (closes) => {
+    if (closes.length < 30) return null;
+    
+    const firstHalf = closes.slice(0, closes.length / 2);
+    const secondHalf = closes.slice(closes.length / 2);
+    
+    const minFirst = Math.min(...firstHalf);
+    const minSecond = Math.min(...secondHalf);
+    const maxRecent = Math.max(...closes.slice(-10));
+    
+    if (Math.abs(minFirst - minSecond) / minFirst < 0.05 && maxRecent > minFirst * 1.1) {
+      return { target: maxRecent * 1.1 };
+    }
+    return null;
+  };
+
+  const detectFlag = (closes, highs, lows) => {
+    if (closes.length < 20) return null;
+    
+    const recentTrend = closes.slice(-20);
+    const firstHalf = recentTrend.slice(0, 10);
+    const secondHalf = recentTrend.slice(10);
+    
+    const firstAvg = firstHalf.reduce((a, b) => a + b) / firstHalf.length;
+    const secondAvg = secondHalf.reduce((a, b) => a + b) / secondHalf.length;
+    
+    if (Math.abs(firstAvg - secondAvg) / firstAvg < 0.03) {
+      const prevTrend = closes.slice(-40, -20);
+      const trendDirection = prevTrend[0] < prevTrend[prevTrend.length - 1] ? 'Bullish' : 'Bearish';
+      return { 
+        direction: trendDirection, 
+        target: trendDirection === 'Bullish' ? secondAvg * 1.05 : secondAvg * 0.95 
+      };
+    }
+    return null;
+  };
+
+  const detectWedge = (highs, lows) => {
+    if (highs.length < 20) return null;
+    
+    const recentHighs = highs.slice(-20);
+    const recentLows = lows.slice(-20);
+    
+    const highSlope = calculateSlope(recentHighs);
+    const lowSlope = calculateSlope(recentLows);
+    
+    if (highSlope < 0 && lowSlope > 0 && Math.abs(highSlope) > Math.abs(lowSlope)) {
+      return { type: 'Falling', direction: 'Bullish', target: recentHighs[0] * 1.03 };
+    } else if (highSlope > 0 && lowSlope < 0 && Math.abs(lowSlope) > Math.abs(highSlope)) {
+      return { type: 'Rising', direction: 'Bearish', target: recentLows[0] * 0.97 };
+    }
+    return null;
+  };
+
+  const calculateSlope = (data) => {
+    const n = data.length;
+    const sumX = (n * (n - 1)) / 2;
+    const sumY = data.reduce((a, b) => a + b, 0);
+    const sumXY = data.reduce((sum, y, x) => sum + x * y, 0);
+    const sumX2 = data.reduce((sum, _, x) => sum + x * x, 0);
+    
+    return (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  };
+
+  // AI-powered market prediction
+  const generateAIPrediction = (data, indicators) => {
+    const features = [
+      indicators.rsi / 100,
+      indicators.macd / data[data.length - 1].close,
+      indicators.adx / 100,
+      (indicators.bollinger.upper - indicators.bollinger.lower) / indicators.bollinger.middle,
+      indicators.stochastic.k / 100,
+      indicators.williamsR / 100,
+      indicators.cci / 100,
+      Math.abs(indicators.obv) / 1000000
+    ];
+    
+    // Simplified neural network simulation
+    const weights = [0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0.03, 0.02];
+    const prediction = features.reduce((sum, feature, i) => sum + feature * weights[i], 0);
+    
+    const direction = prediction > 0.5 ? 'Bullish' : 'Bearish';
+    const confidence = Math.abs(prediction - 0.5) * 200;
+    const priceTarget = data[data.length - 1].close * (1 + (prediction - 0.5) * 0.02);
+    
+    return {
+      direction,
+      confidence: Math.min(confidence, 95),
+      priceTarget,
+      timeframe: '4-8 hours',
+      factors: [
+        { name: 'RSI Signal', impact: Math.abs(features[0] - 0.5) * 100 },
+        { name: 'MACD Momentum', impact: Math.abs(features[1]) * 100 },
+        { name: 'Trend Strength', impact: features[2] * 100 },
+        { name: 'Volatility', impact: features[3] * 100 }
+      ].sort((a, b) => b.impact - a.impact)
+    };
+  };
+
+  // Enhanced signal generation
+  const generateAdvancedSignals = (data, indicators, patterns) => {
+    const signals = [];
+    const currentPrice = data[data.length - 1].close;
+    const prevPrice = data[data.length - 2].close;
+    
+    // Multi-timeframe RSI
+    if (indicators.rsi < 25) {
+      signals.push({
+        type: 'BUY',
+        strength: 'Very Strong',
+        reason: 'RSI Extremely Oversold',
+        confidence: 90,
+        timeframe: 'Short-term'
+      });
+    } else if (indicators.rsi > 75) {
+      signals.push({
+        type: 'SELL',
+        strength: 'Very Strong',
+        reason: 'RSI Extremely Overbought',
+        confidence: 90,
+        timeframe: 'Short-term'
+      });
+    }
+    
+    // Bollinger Bands squeeze
+    const bbWidth = (indicators.bollinger.upper - indicators.bollinger.lower) / indicators.bollinger.middle;
+    if (bbWidth < 0.02) {
+      signals.push({
+        type: 'ALERT',
+        strength: 'Strong',
+        reason: 'Bollinger Bands Squeeze - Breakout Expected',
+        confidence: 80,
+        timeframe: 'Medium-term'
+      });
+    }
+    
+    // MACD crossover
+    if (indicators.macd > 0 && prevPrice < currentPrice) {
+      signals.push({
+        type: 'BUY',
+        strength: 'Strong',
+        reason: 'MACD Bullish Crossover',
+        confidence: 75,
+        timeframe: 'Medium-term'
+      });
+    }
+    
+    // ADX trend strength
+    if (indicators.adx > 40) {
+      const direction = indicators.sma20 > indicators.sma50 ? 'BUY' : 'SELL';
+      signals.push({
+        type: direction,
+        strength: 'Strong',
+        reason: 'Strong Trend Confirmed by ADX',
+        confidence: 85,
+        timeframe: 'Long-term'
+      });
+    }
+    
+    // Volume analysis
+    const avgVolume = data.slice(-20).reduce((sum, d) => sum + d.volume, 0) / 20;
+    const currentVolume = data[data.length - 1].volume;
+    
+    if (currentVolume > avgVolume * 1.5) {
+      const direction = currentPrice > prevPrice ? 'BUY' : 'SELL';
+      signals.push({
+        type: direction,
+        strength: 'Medium',
+        reason: 'High Volume Confirmation',
+        confidence: 70,
+        timeframe: 'Short-term'
+      });
+    }
+    
+    // Pattern-based signals
+    patterns.forEach(pattern => {
+      signals.push({
+        type: pattern.direction === 'Bullish' ? 'BUY' : 'SELL',
+        strength: pattern.strength,
+        reason: `${pattern.type} Pattern`,
+        confidence: pattern.reliability,
+        timeframe: 'Medium-term'
+      });
+    });
+    
+    return signals;
+  };
+
+  // Market sentiment analysis
+  const analyzeMarketSentiment = (data, indicators) => {
+    const bullishFactors = [];
+    const bearishFactors = [];
+    
+    // RSI analysis
+    if (indicators.rsi < 40) bullishFactors.push('RSI showing oversold conditions');
+    if (indicators.rsi > 60) bearishFactors.push('RSI showing overbought conditions');
+    
+    // Moving average analysis
+    if (indicators.sma20 > indicators.sma50) {
+      bullishFactors.push('Short-term MA above long-term MA');
+    } else {
+      bearishFactors.push('Short-term MA below long-term MA');
+    }
+    
+    // MACD analysis
+    if (indicators.macd > 0) {
+      bullishFactors.push('MACD showing bullish momentum');
+    } else {
+      bearishFactors.push('MACD showing bearish momentum');
+    }
+    
+    // Volume analysis
+    const recentVolume = data.slice(-5).reduce((sum, d) => sum + d.volume, 0) / 5;
+    const historicalVolume = data.slice(-50, -5).reduce((sum, d) => sum + d.volume, 0) / 45;
+    
+    if (recentVolume > historicalVolume * 1.2) {
+      bullishFactors.push('Above-average volume supporting moves');
+    }
+    
+    const sentiment = bullishFactors.length > bearishFactors.length ? 'Bullish' : 
+                     bearishFactors.length > bullishFactors.length ? 'Bearish' : 'Neutral';
+    
+    return {
+      sentiment,
+      bullishFactors,
+      bearishFactors,
+      strength: Math.abs(bullishFactors.length - bearishFactors.length) / 
+                (bullishFactors.length + bearishFactors.length) * 100 || 0
+    };
+  };
+
+  // Risk management calculator
+  const calculateRiskManagement = (currentPrice, direction, atr, accountBalance, riskPercent = 2) => {
+    const riskAmount = accountBalance * (riskPercent / 100);
+    const stopLossDistance = atr * 2;
+    const positionSize = riskAmount / stopLossDistance;
+    
+    const stopLoss = direction === 'BUY' ? 
+      currentPrice - stopLossDistance : 
+      currentPrice + stopLossDistance;
+    
+    const takeProfit = direction === 'BUY' ? 
+      currentPrice + (stopLossDistance * 2) : 
+      currentPrice - (stopLossDistance * 2);
+    
+    const riskReward = Math.abs(takeProfit - currentPrice) / Math.abs(currentPrice - stopLoss);
+    
+    return {
+      positionSize: Math.floor(positionSize * leverage),
+      stopLoss: Number(stopLoss.toFixed(5)),
+      takeProfit: Number(takeProfit.toFixed(5)),
+      riskAmount,
+      potentialProfit: riskAmount * riskReward,
+      riskReward: Number(riskReward.toFixed(2))
+    };
+  };
+
+  // Main analysis function
+  const analyzeMarket = useCallback(() => {
+    setLoading(true);
+    
+    setTimeout(() => {
+      const data = generateEnhancedPriceData(selectedPair, timeframe);
+      setPriceData(data);
+      
+      const indicators = calculateAdvancedIndicators(data);
+      const patterns = detectAdvancedPatterns(data);
+      const sentiment = analyzeMarketSentiment(data, indicators);
+      const tradingSignals = generateAdvancedSignals(data, indicators, patterns);
+      const aiPred = generateAIPrediction(data, indicators);
+      
+      const currentPrice = data[data.length - 1].close;
+      
+      setAnalysis({
+        indicators,
+        patterns,
+        currentPrice,
+        trend: indicators.sma20 > indicators.sma50 ? 'Bullish' : 'Bearish',
+        volatility: indicators.atr,
+        support: Math.min(...data.slice(-50).map(d => d.low)),
+        resistance: Math.max(...data.slice(-50).map(d => d.high)),
+        marketStrength: indicators.adx,
+        volume: data[data.length - 1].volume,
+        priceChange: ((currentPrice - data[data.length - 2].close) / data[data.length - 2].close * 100).toFixed(2)
+      });
+      
+      setSignals(tradingSignals);
+      setMarketSentiment(sentiment);
+      setAiPrediction(aiPred);
+      setLoading(false);
+      
+      // Generate alerts
+      const newAlerts = [];
+      if (indicators.rsi < 25 || indicators.rsi > 75) {
+        newAlerts.push(`RSI Alert: ${indicators.rsi.toFixed(2)} - ${indicators.rsi < 25 ? 'Oversold' : 'Overbought'}`);
+      }
+      if (patterns.length > 0) {
+        newAlerts.push(`Pattern Alert: ${patterns[0].type} detected`);
+      }
+      setAlerts(newAlerts);
+      
+    }, 1500);
+  }, [selectedPair, timeframe]);
+
+  // Auto-refresh functionality
+  useEffect(() => {
+    if (autoRefresh) {
+      const interval = setInterval(analyzeMarket, 30000); // Refresh every 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [autoRefresh, analyzeMarket]);
+
+  useEffect(() => {
+    analyzeMarket();
+  }, [selectedPair, timeframe, analyzeMarket]);
+
+  // Signal aggregation
+  const getOverallSignal = () => {
+    if (signals.length === 0) return { type: 'HOLD', confidence: 0, strength: 'Neutral' };
+    
+    const buySignals = signals.filter(s => s.type === 'BUY');
+    const sellSignals = signals.filter(s => s.type === 'SELL');
+    
+    if (buySignals.length > sellSignals.length) {
+      const avgConfidence = buySignals.reduce((a, b) => a + b.confidence, 0) / buySignals.length;
+      return { 
+        type: 'BUY', 
+        confidence: avgConfidence,
+        strength: avgConfidence > 80 ? 'Very Strong' : avgConfidence > 65 ? 'Strong' : 'Medium'
+      };
+    } else if (sellSignals.length > buySignals.length) {
+      const avgConfidence = sellSignals.reduce((a, b) => a + b.confidence, 0) / sellSignals.length;
+      return { 
+        type: 'SELL', 
+        confidence: avgConfidence,
+        strength: avgConfidence > 80 ? 'Very Strong' : avgConfidence > 65 ? 'Strong' : 'Medium'
+      };
+    } else {
+      return { type: 'HOLD', confidence: 50, strength: 'Neutral' };
+    }
+  };
+
+  const overallSignal = getOverallSignal();
+  const riskManagement = analysis ? calculateRiskManagement(
+    analysis.currentPrice, 
+    overallSignal.type, 
+    analysis.volatility, 
+    accountBalance
+  ) : null;
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white p-4">
+      <div className="max-w-7xl mx-auto">
+        {/* Enhanced Header */}
+        <div className="mb-8 flex justify-between items-center">
+          <div>
+            <h1 className="text-4xl font-bold mb-2 flex items-center gap-3">
+              <Brain className="w-10 h-10 text-purple-400" />
+              Advanced Forex AI Analyzer
+            </h1>
+            <p className="text-gray-300">Professional-grade technical analysis with AI predictions</p>
+          </div>
+          <div className="flex gap-4">
+            <button 
+              onClick
